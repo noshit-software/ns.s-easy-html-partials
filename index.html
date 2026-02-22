@@ -1,0 +1,998 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Easy HTML Partials</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface2: #22263a;
+      --border: #2e3354;
+      --accent: #6c8eff;
+      --accent-dim: #3a4e99;
+      --text: #e8eaf6;
+      --text-muted: #7b83b0;
+      --green: #4ade80;
+      --yellow: #facc15;
+      --red: #f87171;
+      --radius: 8px;
+      --font: 'Segoe UI', system-ui, sans-serif;
+      --mono: 'Cascadia Code', 'Fira Code', monospace;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      padding: 1.25rem 2rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+    header h1 { font-size: 1.1rem; font-weight: 600; }
+    header span { color: var(--text-muted); font-size: 0.85rem; }
+
+    .tabs {
+      display: flex;
+      gap: 0;
+      padding: 0 2rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .tab-btn {
+      padding: 0.75rem 1.25rem;
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-family: var(--font);
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .tab-btn:hover { color: var(--text); }
+    .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+    .tab-panel { display: none; flex: 1; padding: 2rem; max-width: 900px; width: 100%; margin: 0 auto; }
+    .tab-panel.active { display: block; }
+
+    /* Drop zone */
+    .drop-zone {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 3rem;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .drop-zone:hover, .drop-zone.dragover {
+      border-color: var(--accent);
+      background: rgba(108,142,255,0.05);
+    }
+    .drop-zone input[type="file"] { display: none; }
+    .drop-zone .icon { font-size: 2.5rem; margin-bottom: 0.75rem; }
+    .drop-zone p { color: var(--text-muted); font-size: 0.9rem; margin-top: 0.4rem; }
+    .drop-zone strong { color: var(--text); }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.55rem 1.1rem;
+      border-radius: var(--radius);
+      border: none;
+      font-family: var(--font);
+      font-size: 0.875rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s;
+    }
+    .btn:hover { opacity: 0.88; }
+    .btn:active { transform: scale(0.98); }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+    .btn-ghost { background: none; color: var(--text-muted); border: 1px solid var(--border); }
+    .btn-sm { padding: 0.35rem 0.75rem; font-size: 0.8rem; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* Section headings */
+    .section-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1.25rem;
+    }
+    .section-head h2 { font-size: 1rem; font-weight: 600; }
+    .section-head p { color: var(--text-muted); font-size: 0.85rem; margin-top: 0.2rem; }
+
+    /* Badge */
+    .badge {
+      display: inline-block;
+      padding: 0.15rem 0.55rem;
+      border-radius: 999px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.03em;
+    }
+    .badge-repeated { background: rgba(74,222,128,0.15); color: var(--green); }
+    .badge-similar  { background: rgba(108,142,255,0.15); color: var(--accent); }
+    .badge-semantic { background: rgba(250,204,21,0.15); color: var(--yellow); }
+
+    /* Candidate card */
+    .candidate-list { display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1.5rem; }
+    .candidate {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      transition: border-color 0.15s;
+    }
+    .candidate.skipped { opacity: 0.45; }
+    .candidate-head {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.75rem 1rem;
+      cursor: pointer;
+      user-select: none;
+    }
+    .candidate-head:hover { background: var(--surface2); }
+    .candidate-toggle {
+      width: 18px; height: 18px;
+      border-radius: 4px;
+      border: 2px solid var(--border);
+      background: none;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: background 0.15s, border-color 0.15s;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .candidate-toggle.checked { background: var(--accent); border-color: var(--accent); }
+    .candidate-toggle.checked::after { content: '✓'; color: white; font-size: 11px; }
+    .candidate-meta { flex: 1; min-width: 0; }
+    .candidate-meta .tag-name { font-family: var(--mono); font-size: 0.85rem; color: var(--accent); }
+    .candidate-meta .file-count { font-size: 0.78rem; color: var(--text-muted); margin-top: 0.1rem; }
+    .candidate-name-input {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 0.82rem;
+      padding: 0.3rem 0.6rem;
+      width: 160px;
+    }
+    .candidate-name-input:focus { outline: none; border-color: var(--accent); }
+    .expand-btn {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 0.75rem;
+      padding: 0.2rem 0.4rem;
+    }
+    .candidate-preview {
+      display: none;
+      padding: 0 1rem 0.75rem;
+    }
+    .candidate-preview.open { display: block; }
+    .candidate-preview pre {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      padding: 0.75rem;
+      font-family: var(--mono);
+      font-size: 0.76rem;
+      color: var(--text-muted);
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+      max-height: 160px;
+      overflow-y: auto;
+    }
+    .file-list { margin-top: 0.5rem; display: flex; flex-wrap: wrap; gap: 0.3rem; }
+    .file-chip {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      font-size: 0.72rem;
+      font-family: var(--mono);
+      padding: 0.1rem 0.45rem;
+      color: var(--text-muted);
+    }
+
+    /* Action bar */
+    .action-bar {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--border);
+    }
+    .action-bar .info { flex: 1; font-size: 0.82rem; color: var(--text-muted); }
+
+    /* Results */
+    .result-list { display: flex; flex-direction: column; gap: 1rem; }
+    .result-file {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+    }
+    .result-file-head {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.65rem 1rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .result-file-head .filename { font-family: var(--mono); font-size: 0.85rem; flex: 1; }
+    .result-file-body { padding: 0; }
+    .result-file-body textarea {
+      width: 100%;
+      background: var(--bg);
+      border: none;
+      color: var(--text-muted);
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      padding: 0.75rem 1rem;
+      resize: vertical;
+      min-height: 120px;
+      border-radius: 0 0 var(--radius) var(--radius);
+    }
+    .result-file-body textarea:focus { outline: none; }
+
+    /* Empty state */
+    .empty-state {
+      text-align: center;
+      padding: 3rem;
+      color: var(--text-muted);
+    }
+    .empty-state .icon { font-size: 2.5rem; margin-bottom: 0.75rem; }
+
+    /* Alert */
+    .alert {
+      padding: 0.75rem 1rem;
+      border-radius: var(--radius);
+      font-size: 0.85rem;
+      margin-bottom: 1rem;
+    }
+    .alert-info { background: rgba(108,142,255,0.1); border: 1px solid var(--accent-dim); color: var(--text); }
+    .alert-warn { background: rgba(250,204,21,0.1); border: 1px solid rgba(250,204,21,0.3); color: var(--yellow); }
+
+    /* Divider with text */
+    .step-indicator {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 1.5rem;
+    }
+    .step-num {
+      width: 26px; height: 26px;
+      border-radius: 50%;
+      background: var(--accent);
+      color: white;
+      font-size: 0.75rem;
+      font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .step-num.done { background: var(--green); }
+    .step-label { font-size: 0.88rem; font-weight: 600; }
+
+    hr { border: none; border-top: 1px solid var(--border); margin: 1.5rem 0; }
+
+    /* Responsive */
+    @media (max-width: 600px) {
+      .tab-panel { padding: 1rem; }
+      header { padding: 1rem; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Easy HTML Partials</h1>
+    <span>Extract repeated blocks · Compile with <code>{{&gt; partial-name}}</code></span>
+  </div>
+</header>
+
+<div class="tabs">
+  <button class="tab-btn active" onclick="switchTab('extract')">Extract Partials</button>
+  <button class="tab-btn" onclick="switchTab('compile')">Compile</button>
+</div>
+
+<!-- ===================== EXTRACT TAB ===================== -->
+<div id="tab-extract" class="tab-panel active">
+
+  <div id="extract-upload">
+    <div class="step-indicator">
+      <div class="step-num" id="step1-num">1</div>
+      <div><div class="step-label">Upload your HTML files</div></div>
+    </div>
+
+    <div class="drop-zone" id="extract-drop" onclick="document.getElementById('extract-file-input').click()">
+      <input type="file" id="extract-file-input" accept=".html,.htm" multiple webkitdirectory>
+      <div class="icon">📂</div>
+      <strong>Drop your site folder here</strong>
+      <p>or click to browse — accepts a folder or individual files<br>
+      <small style="color:var(--text-muted)">skips <code>partials/</code>, <code>dist/</code>, <code>node_modules/</code></small></p>
+    </div>
+
+    <div id="extract-file-list" style="margin-top:1rem; display:none;">
+      <div class="section-head">
+        <div>
+          <h2>Uploaded files</h2>
+          <p id="extract-file-count"></p>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="resetExtract()">Clear</button>
+      </div>
+      <div id="extract-file-chips" class="file-list"></div>
+      <div style="margin-top:1rem;">
+        <button class="btn btn-primary" onclick="runDetect()">Detect Partials →</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="extract-review" style="display:none; margin-top:1.5rem;">
+    <hr>
+    <div class="step-indicator">
+      <div class="step-num" id="step2-num">2</div>
+      <div><div class="step-label">Review candidates</div></div>
+    </div>
+
+    <div id="no-candidates" class="empty-state" style="display:none;">
+      <div class="icon">🔍</div>
+      <strong>No candidates found</strong>
+      <p style="margin-top:0.5rem;">No repeated blocks or semantic tags were detected.<br>Make sure your files share common sections like &lt;header&gt;, &lt;nav&gt;, &lt;footer&gt;.</p>
+    </div>
+
+    <div id="candidates-container" style="display:none;">
+      <div class="alert alert-info" style="margin-bottom:1rem;">
+        Check the blocks you want to extract. Edit the name that will be used for <code>{{&gt; name}}</code>.
+      </div>
+      <div class="candidate-list" id="candidate-list"></div>
+
+      <div class="action-bar">
+        <span class="info" id="extract-summary"></span>
+        <button class="btn btn-primary" onclick="doExtract()">Extract Selected →</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="extract-results" style="display:none; margin-top:1.5rem;">
+    <hr>
+    <div class="step-indicator">
+      <div class="step-num" id="step3-num">3</div>
+      <div><div class="step-label">Download your files</div></div>
+    </div>
+
+    <div class="alert alert-info" style="margin-bottom:1rem;" id="results-summary-text"></div>
+
+    <div class="result-list" id="result-list"></div>
+
+    <div class="action-bar" style="margin-top:1rem;">
+      <button class="btn btn-ghost" onclick="downloadAllFiles()">Download All Files</button>
+      <button class="btn btn-secondary" onclick="resetExtract()">Start Over</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- ===================== COMPILE TAB ===================== -->
+<div id="tab-compile" class="tab-panel">
+
+  <div class="step-indicator">
+    <div class="step-num">1</div>
+    <div><div class="step-label">Upload source files + partials</div></div>
+  </div>
+
+  <div class="alert alert-info" style="margin-bottom:1rem;">
+    Upload your HTML files that contain <code>{{&gt; partial-name}}</code> placeholders, <strong>and</strong> your partial files.
+    Partial files should be named <code>partial-name.html</code>.
+  </div>
+
+  <div class="drop-zone" id="compile-drop" onclick="document.getElementById('compile-file-input').click()">
+    <input type="file" id="compile-file-input" accept=".html,.htm" multiple webkitdirectory>
+    <div class="icon">📂</div>
+    <strong>Drop your site folder here</strong>
+    <p>or click to browse — source pages + partials folder together</p>
+  </div>
+
+  <div id="compile-file-list" style="margin-top:1rem; display:none;">
+    <div class="section-head">
+      <div>
+        <h2>Uploaded files</h2>
+        <p id="compile-file-count"></p>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="resetCompile()">Clear</button>
+    </div>
+    <div id="compile-file-chips" class="file-list"></div>
+    <div style="margin-top:1rem;">
+      <button class="btn btn-primary" onclick="runCompile()">Compile →</button>
+    </div>
+  </div>
+
+  <div id="compile-results" style="display:none; margin-top:1.5rem;">
+    <hr>
+    <div class="step-indicator">
+      <div class="step-num">2</div>
+      <div><div class="step-label">Download compiled HTML</div></div>
+    </div>
+    <div id="compile-warnings"></div>
+    <div class="result-list" id="compile-result-list"></div>
+    <div class="action-bar" style="margin-top:1rem;">
+      <button class="btn btn-ghost" onclick="downloadAllCompiled()">Download All Files</button>
+      <button class="btn btn-secondary" onclick="resetCompile()">Start Over</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── State ────────────────────────────────────────────────────────────────────
+
+const SEMANTIC_TAGS = ['header', 'footer', 'nav', 'aside', 'main', 'section', 'article'];
+
+let extractFiles   = [];   // { name, content }
+let candidates     = [];   // detected candidate objects
+let resultFiles    = [];   // { name, content } — generated output
+
+let compileFiles   = [];
+let compiledFiles  = [];
+
+// ─── Tab switching ────────────────────────────────────────────────────────────
+
+function switchTab(name) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelector(`#tab-${name}`).classList.add('active');
+  event.target.classList.add('active');
+}
+
+// ─── Drop zone helpers ────────────────────────────────────────────────────────
+
+const SKIP_DIRS = new Set(['partials', 'dist', 'node_modules', '.git', '.svn']);
+
+async function readEntry(entry, skipPartials = true) {
+  if (entry.isFile) {
+    if (!/\.html?$/i.test(entry.name)) return [];
+    const file = await new Promise((res, rej) => entry.file(res, rej));
+    // Attach relative path for context
+    file._relativePath = entry.fullPath.replace(/^\//, '');
+    return [file];
+  }
+  if (entry.isDirectory) {
+    if (skipPartials && SKIP_DIRS.has(entry.name)) return [];
+    if (!skipPartials && new Set(['dist', 'node_modules', '.git', '.svn']).has(entry.name)) return [];
+    const reader = entry.createReader();
+    const entries = await readAllDirEntries(reader);
+    const nested  = await Promise.all(entries.map(e => readEntry(e, skipPartials)));
+    return nested.flat();
+  }
+  return [];
+}
+
+async function readAllDirEntries(reader) {
+  const all = [];
+  let batch;
+  do {
+    batch = await new Promise((res, rej) => reader.readEntries(res, rej));
+    all.push(...batch);
+  } while (batch.length > 0);
+  return all;
+}
+
+function initDropZone(dropId, inputId, onFiles, skipPartials = true) {
+  const drop  = document.getElementById(dropId);
+  const input = document.getElementById(inputId);
+
+  drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('dragover'); });
+  drop.addEventListener('dragleave', () => drop.classList.remove('dragover'));
+
+  drop.addEventListener('drop', async e => {
+    e.preventDefault();
+    drop.classList.remove('dragover');
+    const items = [...e.dataTransfer.items];
+    const fileGroups = await Promise.all(
+      items.map(item => {
+        const entry = item.webkitGetAsEntry ? item.webkitGetAsEntry() : null;
+        if (entry) return readEntry(entry, skipPartials);
+        // Fallback: no entry API
+        const f = item.getAsFile();
+        return f && /\.html?$/i.test(f.name) ? [f] : [];
+      })
+    );
+    const files = fileGroups.flat();
+    if (files.length) onFiles(files);
+  });
+
+  input.addEventListener('change', () => {
+    const files = [...input.files].filter(f => /\.html?$/i.test(f.name));
+    if (files.length) onFiles(files);
+    input.value = '';
+  });
+}
+
+async function readFiles(fileList) {
+  return Promise.all(fileList.map(f => new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload  = () => res({
+      name:    f._relativePath || f.webkitRelativePath || f.name,
+      content: r.result,
+    });
+    r.onerror = rej;
+    r.readAsText(f);
+  })));
+}
+
+// ─── Detect ───────────────────────────────────────────────────────────────────
+
+function hashStr(str) {
+  // FNV-1a 32-bit — fast, no crypto needed
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return h.toString(36);
+}
+
+function normalise(html) {
+  return html.replace(/\s+/g, ' ').trim();
+}
+
+function outerHTML(el) {
+  const d = document.createElement('div');
+  d.appendChild(el.cloneNode(true));
+  return d.innerHTML;
+}
+
+// Attributes that carry per-page state and should be ignored when comparing structure.
+const VOLATILE_ATTRS = new Set([
+  'class', 'aria-current', 'aria-selected', 'aria-expanded',
+  'aria-pressed', 'aria-checked', 'tabindex',
+]);
+
+/**
+ * Return a normalised outer HTML string with all volatile attributes stripped.
+ * Used for structural (fuzzy) matching so navs with an active-page class
+ * still group together across pages.
+ */
+function structuralHTML(el) {
+  const clone = el.cloneNode(true);
+  [clone, ...clone.querySelectorAll('*')].forEach(node => {
+    VOLATILE_ATTRS.forEach(attr => node.removeAttribute(attr));
+  });
+  const d = document.createElement('div');
+  d.appendChild(clone);
+  return normalise(d.innerHTML);
+}
+
+function detectCandidates(files) {
+  // Key by structural hash so near-identical blocks group together.
+  // structMap: structHash -> { html (first seen), tag, files: Set, allExact: bool }
+  const structMap = new Map();
+
+  for (const { name, content } of files) {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(content, 'text/html');
+
+    for (const tag of SEMANTIC_TAGS) {
+      doc.querySelectorAll(tag).forEach(el => {
+        const exactHtml  = normalise(outerHTML(el));
+        const structKey  = hashStr(structuralHTML(el));
+
+        if (!structMap.has(structKey)) {
+          structMap.set(structKey, { html: exactHtml, tag, files: new Set(), allExact: true });
+        }
+        const entry = structMap.get(structKey);
+        if (entry.html !== exactHtml) entry.allExact = false;
+        entry.files.add(name);
+      });
+    }
+  }
+
+  const results = [];
+  const tagCount = {};
+
+  for (const [, { html, tag, files, allExact }] of structMap) {
+    const isRepeated = files.size > 1;
+
+    tagCount[tag] = (tagCount[tag] || 0) + 1;
+    const n = tagCount[tag];
+    const suggestedName = n === 1 ? tag : `${tag}-${n}`;
+
+    // reason: 'repeated' = identical, 'similar' = same structure/volatile attrs differ, 'semantic' = single file
+    const reason = isRepeated ? (allExact ? 'repeated' : 'similar') : 'semantic';
+
+    results.push({
+      reason,
+      tag,
+      html,
+      files:         [...files].sort(),
+      suggestedName,
+      checked:       true,
+    });
+  }
+
+  // repeated/similar first, then semantic; alpha within each group
+  const order = { repeated: 0, similar: 1, semantic: 2 };
+  results.sort((a, b) => {
+    if (a.reason !== b.reason) return order[a.reason] - order[b.reason];
+    return a.suggestedName.localeCompare(b.suggestedName);
+  });
+
+  return results;
+}
+
+// ─── Extract UI ───────────────────────────────────────────────────────────────
+
+initDropZone('extract-drop', 'extract-file-input', async (files) => {
+  if (!files.length) return;
+  extractFiles = await readFiles(files);
+  renderExtractFileList();
+});
+
+function renderExtractFileList() {
+  const container = document.getElementById('extract-file-list');
+  const chips     = document.getElementById('extract-file-chips');
+  const count     = document.getElementById('extract-file-count');
+  container.style.display = 'block';
+  count.textContent = `${extractFiles.length} file${extractFiles.length !== 1 ? 's' : ''} selected`;
+  chips.innerHTML = extractFiles
+    .map(f => `<span class="file-chip">${esc(f.name)}</span>`)
+    .join('');
+}
+
+function runDetect() {
+  candidates = detectCandidates(extractFiles);
+  document.getElementById('extract-review').style.display = 'block';
+
+  if (candidates.length === 0) {
+    document.getElementById('no-candidates').style.display = 'block';
+    document.getElementById('candidates-container').style.display = 'none';
+    return;
+  }
+  document.getElementById('no-candidates').style.display = 'none';
+  document.getElementById('candidates-container').style.display = 'block';
+  renderCandidates();
+}
+
+function renderCandidates() {
+  const list = document.getElementById('candidate-list');
+  list.innerHTML = candidates.map((c, i) => `
+    <div class="candidate ${c.checked ? '' : 'skipped'}" id="cand-${i}">
+      <div class="candidate-head" onclick="toggleCandidatePreview(${i})">
+        <div class="candidate-toggle ${c.checked ? 'checked' : ''}" onclick="event.stopPropagation(); toggleCandidateCheck(${i})"></div>
+        <div class="candidate-meta">
+          <div class="tag-name">&lt;${esc(c.tag)}&gt;
+            <span class="badge badge-${c.reason}" style="margin-left:0.4rem;"
+              title="${c.reason === 'similar' ? 'Same structure across files — only class/aria attributes differ' : ''}"
+            >${c.reason === 'similar' ? 'similar ?' : c.reason}</span>
+          </div>
+          <div class="file-count">
+            ${c.files.length} file${c.files.length !== 1 ? 's' : ''}
+          </div>
+        </div>
+        <input class="candidate-name-input" type="text" value="${esc(c.suggestedName)}"
+          onclick="event.stopPropagation()"
+          oninput="updateCandidateName(${i}, this.value)"
+          title="Partial name for {{> name}}"
+          placeholder="partial-name">
+        <button class="expand-btn" onclick="event.stopPropagation(); toggleCandidatePreview(${i})">▼ preview</button>
+      </div>
+      <div class="candidate-preview" id="preview-${i}">
+        <pre>${esc(c.html.length > 600 ? c.html.slice(0, 600) + '…' : c.html)}</pre>
+        <div class="file-list">
+          ${c.files.map(f => `<span class="file-chip">${esc(f)}</span>`).join('')}
+        </div>
+      </div>
+    </div>
+  `).join('');
+  updateExtractSummary();
+}
+
+function toggleCandidateCheck(i) {
+  candidates[i].checked = !candidates[i].checked;
+  renderCandidates();
+}
+
+function toggleCandidatePreview(i) {
+  const el = document.getElementById(`preview-${i}`);
+  el.classList.toggle('open');
+}
+
+function updateCandidateName(i, val) {
+  candidates[i].suggestedName = val.trim().replace(/\s+/g, '-').replace(/[^a-zA-Z0-9\-_]/g, '');
+}
+
+function updateExtractSummary() {
+  const checked = candidates.filter(c => c.checked).length;
+  document.getElementById('extract-summary').textContent =
+    `${checked} of ${candidates.length} partial${candidates.length !== 1 ? 's' : ''} selected`;
+}
+
+// ─── Do Extract ───────────────────────────────────────────────────────────────
+
+function doExtract() {
+  const selected = candidates.filter(c => c.checked && c.suggestedName);
+  if (!selected.length) {
+    alert('No partials selected.');
+    return;
+  }
+
+  resultFiles = [];
+
+  // Build partial files
+  for (const c of selected) {
+    resultFiles.push({
+      name:    `partials/${c.suggestedName}.html`,
+      content: c.html,
+      type:    'partial',
+    });
+  }
+
+  // Rewrite source HTML files
+  for (const { name, content } of extractFiles) {
+    const parser   = new DOMParser();
+    const doc      = parser.parseFromString(content, 'text/html');
+    let   modified = content;
+
+    for (const c of selected) {
+      // Find and replace every occurrence of this block's HTML
+      const norm = normalise(c.html);
+      // We do a string-level replacement on normalised content
+      modified = replaceBlock(modified, norm, `{{> ${c.suggestedName}}}`);
+    }
+
+    resultFiles.push({ name, content: modified, type: 'source' });
+  }
+
+  renderResults();
+}
+
+/**
+ * Replace normalised block html inside raw html string.
+ * Strategy: parse, find matching elements, replace with comment placeholder, serialise.
+ */
+function replaceBlock(rawHtml, normBlock, placeholder) {
+  const parser = new DOMParser();
+  const doc    = parser.parseFromString(rawHtml, 'text/html');
+  let changed  = false;
+
+  for (const tag of SEMANTIC_TAGS) {
+    doc.querySelectorAll(tag).forEach(el => {
+      if (normalise(outerHTML(el)) === normBlock) {
+        const marker = doc.createComment(` __PARTIAL_PLACEHOLDER__${placeholder} `);
+        el.replaceWith(marker);
+        changed = true;
+      }
+    });
+  }
+
+  if (!changed) return rawHtml;
+
+  // Serialise — we need to get the full document back
+  let out = '<!DOCTYPE html>\n' + doc.documentElement.outerHTML;
+
+  // Replace comment placeholders with actual {{> }} tags
+  out = out.replace(/<!--\s*__PARTIAL_PLACEHOLDER__(.*?)\s*-->/g, (_m, p) => p.trim());
+  return out;
+}
+
+function renderResults() {
+  document.getElementById('step1-num').classList.add('done');
+  document.getElementById('step2-num').classList.add('done');
+  document.getElementById('step3-num').classList.add('done');
+  document.getElementById('extract-results').style.display = 'block';
+
+  const partialCount = resultFiles.filter(f => f.type === 'partial').length;
+  document.getElementById('results-summary-text').innerHTML =
+    `Extracted <strong>${partialCount}</strong> partial${partialCount !== 1 ? 's' : ''}. ` +
+    `Copy each file into your project — save partial files to a <code>partials/</code> folder.`;
+
+  const list = document.getElementById('result-list');
+  list.innerHTML = resultFiles.map((f, i) => `
+    <div class="result-file">
+      <div class="result-file-head">
+        <span class="filename">${esc(f.name)}</span>
+        <button class="btn btn-secondary btn-sm" onclick="downloadFile(${i})">↓ Download</button>
+      </div>
+      <div class="result-file-body">
+        <textarea id="result-${i}" spellcheck="false">${esc(f.content)}</textarea>
+      </div>
+    </div>
+  `).join('');
+
+  document.getElementById('extract-results').scrollIntoView({ behavior: 'smooth' });
+}
+
+// ─── Compile UI ───────────────────────────────────────────────────────────────
+
+initDropZone('compile-drop', 'compile-file-input', async (files) => {
+  if (!files.length) return;
+  compileFiles = await readFiles(files);
+  renderCompileFileList();
+}, false); // false = don't skip partials/ dir
+
+function renderCompileFileList() {
+  const container = document.getElementById('compile-file-list');
+  const chips     = document.getElementById('compile-file-chips');
+  const count     = document.getElementById('compile-file-count');
+  container.style.display = 'block';
+  count.textContent = `${compileFiles.length} file${compileFiles.length !== 1 ? 's' : ''} selected`;
+  chips.innerHTML = compileFiles
+    .map(f => `<span class="file-chip">${esc(f.name)}</span>`)
+    .join('');
+}
+
+function runCompile() {
+  // Build partials map: name -> content
+  // A partial is any file whose name doesn't contain {{> }}
+  // We identify partials heuristically: files that are only fragments (no <html> tag)
+  // OR files in a "partials" subfolder (name contains "partials/")
+  // OR explicitly: any file whose outer content lacks <html>
+
+  const partialsMap  = new Map();
+  const sourceFiles  = [];
+  const warnings     = [];
+
+  for (const f of compileFiles) {
+    const parser = new DOMParser();
+    const doc    = parser.parseFromString(f.content, 'text/html');
+    const hasHtml = /<html[\s>]/i.test(f.content);
+    const hasIncludes = /\{\{>\s*[^}]+\}\}/.test(f.content);
+
+    // Treat as partial if: no full html structure OR filename suggests partial
+    const isPartial = !hasHtml || /partials?\//i.test(f.name);
+
+    if (isPartial) {
+      // Key: filename without extension and without "partials/" prefix
+      const key = f.name.replace(/^.*[/\\]/, '').replace(/\.html?$/i, '');
+      partialsMap.set(key, f.content);
+    } else {
+      sourceFiles.push(f);
+    }
+  }
+
+  compiledFiles = [];
+
+  for (const f of sourceFiles) {
+    const { content: compiled, unresolved } = resolveIncludes(f.content, partialsMap);
+    compiledFiles.push({ name: f.name, content: compiled });
+    if (unresolved.length) {
+      warnings.push(`<strong>${esc(f.name)}</strong>: unresolved partials — ${unresolved.map(esc).join(', ')}`);
+    }
+  }
+
+  // Also compile any partials that include other partials
+  for (const [key, content] of partialsMap) {
+    if (/\{\{>\s*[^}]+\}\}/.test(content)) {
+      const { content: compiled } = resolveIncludes(content, partialsMap);
+      compiledFiles.push({ name: `${key}.html`, content: compiled, partial: true });
+    }
+  }
+
+  renderCompileResults(warnings);
+}
+
+function resolveIncludes(content, partialsMap, depth = 0) {
+  if (depth > 10) return { content, unresolved: [] };
+  const unresolved = new Set();
+
+  const result = content.replace(/\{\{>\s*([^}]+?)\s*\}\}/g, (_m, name) => {
+    name = name.trim();
+    // Support paths like "partials/header" -> key "header"
+    const key = name.replace(/^.*[/\\]/, '').replace(/\.html?$/i, '');
+    if (partialsMap.has(key)) {
+      const { content: inner } = resolveIncludes(partialsMap.get(key), partialsMap, depth + 1);
+      return inner;
+    }
+    unresolved.add(name);
+    return _m; // leave it in place
+  });
+
+  return { content: result, unresolved: [...unresolved] };
+}
+
+function renderCompileResults(warnings) {
+  document.getElementById('compile-results').style.display = 'block';
+
+  const warn = document.getElementById('compile-warnings');
+  warn.innerHTML = warnings.length
+    ? `<div class="alert alert-warn" style="margin-bottom:1rem;">⚠ ${warnings.join('<br>')}</div>`
+    : '';
+
+  const list = document.getElementById('compile-result-list');
+  list.innerHTML = compiledFiles.map((f, i) => `
+    <div class="result-file">
+      <div class="result-file-head">
+        <span class="filename">${esc(f.name)}${f.partial ? ' <span style="color:var(--text-muted);font-size:0.75rem;">(partial)</span>' : ''}</span>
+        <button class="btn btn-secondary btn-sm" onclick="downloadCompiledFile(${i})">↓ Download</button>
+      </div>
+      <div class="result-file-body">
+        <textarea spellcheck="false">${esc(f.content)}</textarea>
+      </div>
+    </div>
+  `).join('');
+
+  document.getElementById('compile-results').scrollIntoView({ behavior: 'smooth' });
+}
+
+// ─── Download helpers ─────────────────────────────────────────────────────────
+
+function downloadFile(i) {
+  const f = resultFiles[i];
+  triggerDownload(f.name.split('/').pop(), f.content);
+}
+
+function downloadCompiledFile(i) {
+  const f = compiledFiles[i];
+  triggerDownload(f.name.split('/').pop(), f.content);
+}
+
+function downloadAllFiles() {
+  resultFiles.forEach((f, i) => {
+    setTimeout(() => downloadFile(i), i * 120);
+  });
+}
+
+function downloadAllCompiled() {
+  compiledFiles.forEach((f, i) => {
+    setTimeout(() => downloadCompiledFile(i), i * 120);
+  });
+}
+
+function triggerDownload(filename, content) {
+  const a   = document.createElement('a');
+  a.href    = URL.createObjectURL(new Blob([content], { type: 'text/html' }));
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+}
+
+// ─── Reset ────────────────────────────────────────────────────────────────────
+
+function resetExtract() {
+  extractFiles = []; candidates = []; resultFiles = [];
+  document.getElementById('extract-file-list').style.display  = 'none';
+  document.getElementById('extract-review').style.display     = 'none';
+  document.getElementById('extract-results').style.display    = 'none';
+  document.getElementById('extract-file-chips').innerHTML     = '';
+  document.getElementById('candidate-list').innerHTML         = '';
+  document.getElementById('result-list').innerHTML            = '';
+  ['step1-num','step2-num','step3-num'].forEach(id =>
+    document.getElementById(id).classList.remove('done'));
+}
+
+function resetCompile() {
+  compileFiles = []; compiledFiles = [];
+  document.getElementById('compile-file-list').style.display  = 'none';
+  document.getElementById('compile-results').style.display    = 'none';
+  document.getElementById('compile-file-chips').innerHTML     = '';
+  document.getElementById('compile-result-list').innerHTML    = '';
+}
+
+// ─── Utils ────────────────────────────────────────────────────────────────────
+
+function esc(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+</script>
+</body>
+</html>

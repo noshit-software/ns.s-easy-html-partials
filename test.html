@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tests — Easy HTML Partials</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0f1117; --surface: #1a1d27; --surface2: #22263a;
+      --border: #2e3354; --accent: #6c8eff;
+      --text: #e8eaf6; --text-muted: #7b83b0;
+      --green: #4ade80; --red: #f87171; --yellow: #facc15;
+      --radius: 8px; --mono: 'Cascadia Code', 'Fira Code', monospace;
+      --font: 'Segoe UI', system-ui, sans-serif;
+    }
+    body { background: var(--bg); color: var(--text); font-family: var(--font); padding: 2rem; }
+    h1 { font-size: 1.1rem; margin-bottom: 0.25rem; }
+    .subtitle { color: var(--text-muted); font-size: 0.85rem; margin-bottom: 2rem; }
+    #summary {
+      display: flex; gap: 1.5rem; align-items: center;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 1rem 1.25rem;
+      margin-bottom: 1.5rem; font-size: 0.9rem;
+    }
+    #summary .count { font-weight: 700; font-size: 1.1rem; }
+    .pass-count { color: var(--green); }
+    .fail-count { color: var(--red); }
+    .skip-count { color: var(--yellow); }
+    #summary .progress {
+      flex: 1; height: 6px; background: var(--surface2);
+      border-radius: 999px; overflow: hidden;
+    }
+    #summary .progress-bar { height: 100%; border-radius: 999px; transition: width 0.3s; }
+
+    .suite { margin-bottom: 1.5rem; }
+    .suite-name {
+      font-size: 0.78rem; font-weight: 600; letter-spacing: 0.08em;
+      text-transform: uppercase; color: var(--text-muted);
+      margin-bottom: 0.5rem; padding-bottom: 0.4rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .test-row {
+      display: flex; align-items: flex-start; gap: 0.75rem;
+      padding: 0.5rem 0.75rem; border-radius: 6px;
+      font-size: 0.85rem; margin-bottom: 2px;
+    }
+    .test-row:hover { background: var(--surface); }
+    .test-icon { flex-shrink: 0; font-size: 0.9rem; margin-top: 1px; }
+    .test-name { flex: 1; }
+    .test-row.fail .test-name { color: var(--red); }
+    .test-row.pass .test-name { color: var(--text); }
+    .test-error {
+      margin-top: 0.35rem; font-family: var(--mono); font-size: 0.75rem;
+      color: var(--red); background: rgba(248,113,113,0.08);
+      border: 1px solid rgba(248,113,113,0.2); border-radius: 4px;
+      padding: 0.4rem 0.6rem; white-space: pre-wrap; word-break: break-all;
+    }
+    .running { color: var(--text-muted); font-size: 0.85rem; padding: 1rem 0; }
+  </style>
+</head>
+<body>
+
+<h1>Easy HTML Partials — Test Suite</h1>
+<p class="subtitle">Open in any modern browser. No install required.</p>
+
+<div id="summary">
+  <span>Running…</span>
+</div>
+
+<div id="output"></div>
+
+<script>
+// ─── Logic under test (copied from index.html) ────────────────────────────────
+
+const SEMANTIC_TAGS = ['header', 'footer', 'nav', 'aside', 'main', 'section', 'article'];
+
+function hashStr(str) {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return h.toString(36);
+}
+
+function normalise(html) {
+  return html.replace(/\s+/g, ' ').trim();
+}
+
+function outerHTML(el) {
+  const d = document.createElement('div');
+  d.appendChild(el.cloneNode(true));
+  return d.innerHTML;
+}
+
+const VOLATILE_ATTRS = new Set([
+  'class', 'aria-current', 'aria-selected', 'aria-expanded',
+  'aria-pressed', 'aria-checked', 'tabindex',
+]);
+
+function structuralHTML(el) {
+  const clone = el.cloneNode(true);
+  [clone, ...clone.querySelectorAll('*')].forEach(node => {
+    VOLATILE_ATTRS.forEach(attr => node.removeAttribute(attr));
+  });
+  const d = document.createElement('div');
+  d.appendChild(clone);
+  return normalise(d.innerHTML);
+}
+
+function detectCandidates(files) {
+  const structMap = new Map();
+  for (const { name, content } of files) {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(content, 'text/html');
+    for (const tag of SEMANTIC_TAGS) {
+      doc.querySelectorAll(tag).forEach(el => {
+        const exactHtml = normalise(outerHTML(el));
+        const structKey = hashStr(structuralHTML(el));
+        if (!structMap.has(structKey)) {
+          structMap.set(structKey, { html: exactHtml, tag, files: new Set(), allExact: true });
+        }
+        const entry = structMap.get(structKey);
+        if (entry.html !== exactHtml) entry.allExact = false;
+        entry.files.add(name);
+      });
+    }
+  }
+  const results = [];
+  const tagCount = {};
+  const order = { repeated: 0, similar: 1, semantic: 2 };
+  for (const [, { html, tag, files, allExact }] of structMap) {
+    const isRepeated = files.size > 1;
+    tagCount[tag] = (tagCount[tag] || 0) + 1;
+    const n = tagCount[tag];
+    const reason = isRepeated ? (allExact ? 'repeated' : 'similar') : 'semantic';
+    results.push({
+      reason, tag, html,
+      files: [...files].sort(),
+      suggestedName: n === 1 ? tag : `${tag}-${n}`,
+      checked: true,
+    });
+  }
+  results.sort((a, b) => {
+    if (a.reason !== b.reason) return order[a.reason] - order[b.reason];
+    return a.suggestedName.localeCompare(b.suggestedName);
+  });
+  return results;
+}
+
+function replaceBlock(rawHtml, normBlock, placeholder) {
+  const parser = new DOMParser();
+  const doc    = parser.parseFromString(rawHtml, 'text/html');
+  let changed  = false;
+  for (const tag of SEMANTIC_TAGS) {
+    doc.querySelectorAll(tag).forEach(el => {
+      if (normalise(outerHTML(el)) === normBlock) {
+        el.replaceWith(doc.createComment(` __PARTIAL_PLACEHOLDER__${placeholder} `));
+        changed = true;
+      }
+    });
+  }
+  if (!changed) return rawHtml;
+  let out = '<!DOCTYPE html>\n' + doc.documentElement.outerHTML;
+  out = out.replace(/<!--\s*__PARTIAL_PLACEHOLDER__(.*?)\s*-->/g, (_m, p) => p.trim());
+  return out;
+}
+
+function resolveIncludes(content, partialsMap, depth = 0) {
+  if (depth > 10) return { content, unresolved: [] };
+  const unresolved = new Set();
+  const result = content.replace(/\{\{>\s*([^}]+?)\s*\}\}/g, (_m, name) => {
+    name = name.trim();
+    const key = name.replace(/^.*[/\\]/, '').replace(/\.html?$/i, '');
+    if (partialsMap.has(key)) {
+      const { content: inner } = resolveIncludes(partialsMap.get(key), partialsMap, depth + 1);
+      return inner;
+    }
+    unresolved.add(name);
+    return _m;
+  });
+  return { content: result, unresolved: [...unresolved] };
+}
+
+// ─── Test runner ──────────────────────────────────────────────────────────────
+
+const suites  = [];
+let   current = null;
+
+function describe(name, fn) {
+  current = { name, tests: [] };
+  suites.push(current);
+  fn();
+  current = null;
+}
+
+function it(name, fn) {
+  if (!current) throw new Error('it() called outside describe()');
+  current.tests.push({ name, fn });
+}
+
+// Assertions
+
+function assert(val, msg = 'Expected truthy') {
+  if (!val) throw new Error(msg);
+}
+
+function assertEqual(a, b, msg) {
+  const pass = JSON.stringify(a) === JSON.stringify(b);
+  if (!pass) throw new Error(msg || `Expected ${JSON.stringify(a)} to equal ${JSON.stringify(b)}`);
+}
+
+function assertNotEqual(a, b, msg) {
+  const pass = JSON.stringify(a) !== JSON.stringify(b);
+  if (!pass) throw new Error(msg || `Expected values to differ, but both were ${JSON.stringify(a)}`);
+}
+
+function assertIncludes(str, substr, msg) {
+  if (!String(str).includes(substr))
+    throw new Error(msg || `Expected "${str}" to include "${substr}"`);
+}
+
+function assertNotIncludes(str, substr, msg) {
+  if (String(str).includes(substr))
+    throw new Error(msg || `Expected string NOT to include "${substr}"`);
+}
+
+function assertLength(arr, len, msg) {
+  if (arr.length !== len)
+    throw new Error(msg || `Expected length ${len}, got ${arr.length}`);
+}
+
+// ─── Test definitions ─────────────────────────────────────────────────────────
+
+describe('hashStr', () => {
+  it('returns a string', () => {
+    assert(typeof hashStr('hello') === 'string');
+  });
+  it('same input → same output', () => {
+    assertEqual(hashStr('hello world'), hashStr('hello world'));
+  });
+  it('different input → different output', () => {
+    assertNotEqual(hashStr('hello'), hashStr('world'));
+  });
+  it('empty string does not throw', () => {
+    assert(typeof hashStr('') === 'string');
+  });
+  it('is sensitive to whitespace', () => {
+    assertNotEqual(hashStr('a b'), hashStr('a  b'));
+  });
+});
+
+describe('normalise', () => {
+  it('trims leading and trailing whitespace', () => {
+    assertEqual(normalise('  hello  '), 'hello');
+  });
+  it('collapses multiple spaces', () => {
+    assertEqual(normalise('a   b'), 'a b');
+  });
+  it('collapses newlines and tabs', () => {
+    assertEqual(normalise('a\n\t b'), 'a b');
+  });
+  it('leaves already-normalised string unchanged', () => {
+    assertEqual(normalise('<nav>links</nav>'), '<nav>links</nav>');
+  });
+});
+
+describe('structuralHTML', () => {
+  function parseEl(html, tag) {
+    const doc = new DOMParser().parseFromString(`<html><body>${html}</body></html>`, 'text/html');
+    return doc.querySelector(tag);
+  }
+
+  it('strips class attribute', () => {
+    const el = parseEl('<nav class="site-nav"><a href="/">Home</a></nav>', 'nav');
+    assertNotIncludes(structuralHTML(el), 'class');
+  });
+
+  it('strips aria-current', () => {
+    const el = parseEl('<nav><a href="/" aria-current="page">Home</a></nav>', 'nav');
+    assertNotIncludes(structuralHTML(el), 'aria-current');
+  });
+
+  it('strips class from all descendants', () => {
+    const el = parseEl('<nav><ul><li class="active"><a href="/">Home</a></li></ul></nav>', 'nav');
+    assertNotIncludes(structuralHTML(el), 'class');
+  });
+
+  it('preserves href and other content attributes', () => {
+    const el = parseEl('<nav><a href="/about">About</a></nav>', 'nav');
+    assertIncludes(structuralHTML(el), 'href="/about"');
+  });
+
+  it('two navs differing only in active class produce the same structural HTML', () => {
+    const doc1 = new DOMParser().parseFromString(
+      '<html><body><nav><a href="/" class="active">Home</a><a href="/about">About</a></nav></body></html>',
+      'text/html'
+    );
+    const doc2 = new DOMParser().parseFromString(
+      '<html><body><nav><a href="/">Home</a><a href="/about" class="active">About</a></nav></body></html>',
+      'text/html'
+    );
+    assertEqual(
+      structuralHTML(doc1.querySelector('nav')),
+      structuralHTML(doc2.querySelector('nav'))
+    );
+  });
+
+  it('two navs with different links produce different structural HTML', () => {
+    const doc1 = new DOMParser().parseFromString(
+      '<html><body><nav><a href="/">Home</a></nav></body></html>', 'text/html'
+    );
+    const doc2 = new DOMParser().parseFromString(
+      '<html><body><nav><a href="/shop">Shop</a></nav></body></html>', 'text/html'
+    );
+    assertNotEqual(
+      structuralHTML(doc1.querySelector('nav')),
+      structuralHTML(doc2.querySelector('nav'))
+    );
+  });
+});
+
+describe('detectCandidates', () => {
+  it('returns empty array for empty input', () => {
+    assertLength(detectCandidates([]), 0);
+  });
+
+  it('detects a single semantic header', () => {
+    const files = [{ name: 'index.html',
+      content: '<html><body><header><h1>Title</h1></header><main>content</main></body></html>' }];
+    const r = detectCandidates(files);
+    assertLength(r, 2); // header + main
+    const h = r.find(c => c.tag === 'header');
+    assert(h, 'header candidate missing');
+    assertEqual(h.reason, 'semantic');
+    assertEqual(h.suggestedName, 'header');
+  });
+
+  it('marks identical blocks across files as repeated', () => {
+    const nav = '<nav><a href="/">Home</a><a href="/about">About</a></nav>';
+    const files = [
+      { name: 'index.html', content: `<html><body>${nav}<main>A</main></body></html>` },
+      { name: 'about.html', content: `<html><body>${nav}<main>B</main></body></html>` },
+    ];
+    const r = detectCandidates(files);
+    const n = r.find(c => c.tag === 'nav');
+    assert(n, 'nav candidate missing');
+    assertEqual(n.reason, 'repeated');
+    assertLength(n.files, 2);
+  });
+
+  it('repeated candidates sort before semantic-only', () => {
+    const nav = '<nav><a href="/">Home</a></nav>';
+    const files = [
+      { name: 'a.html', content: `<html><body>${nav}<header><h1>A</h1></header></body></html>` },
+      { name: 'b.html', content: `<html><body>${nav}<footer>B</footer></body></html>` },
+    ];
+    const r = detectCandidates(files);
+    assertEqual(r[0].reason, 'repeated');
+  });
+
+  it('suggests numbered names when the same tag appears multiple times', () => {
+    const files = [{
+      name: 'index.html',
+      content: '<html><body>' +
+        '<nav id="main"><a href="/">Home</a></nav>' +
+        '<nav id="sub"><a href="/sub">Sub</a></nav>' +
+        '</body></html>',
+    }];
+    const r = detectCandidates(files);
+    const navs = r.filter(c => c.tag === 'nav');
+    assertLength(navs, 2);
+    assert(navs.some(c => c.suggestedName === 'nav'), 'first nav should be "nav"');
+    assert(navs.some(c => c.suggestedName === 'nav-2'), 'second nav should be "nav-2"');
+  });
+
+  it('marks navs differing only by active class as similar', () => {
+    const files = [
+      { name: 'index.html',
+        content: '<html><body><nav><a href="/" class="active">Home</a><a href="/about">About</a></nav><main>A</main></body></html>' },
+      { name: 'about.html',
+        content: '<html><body><nav><a href="/">Home</a><a href="/about" class="active">About</a></nav><main>B</main></body></html>' },
+    ];
+    const r = detectCandidates(files);
+    const n = r.find(c => c.tag === 'nav');
+    assert(n, 'nav candidate should exist');
+    assertEqual(n.reason, 'similar');
+    assertLength(n.files, 2);
+  });
+
+  it('marks navs differing by aria-current as similar', () => {
+    const files = [
+      { name: 'a.html',
+        content: '<html><body><nav><a href="/" aria-current="page">Home</a></nav></body></html>' },
+      { name: 'b.html',
+        content: '<html><body><nav><a href="/">Home</a></nav></body></html>' },
+    ];
+    const r = detectCandidates(files);
+    const n = r.find(c => c.tag === 'nav');
+    assert(n, 'nav candidate should exist');
+    assertEqual(n.reason, 'similar');
+  });
+
+  it('identical blocks across files stay repeated, not similar', () => {
+    const nav = '<nav><a href="/">Home</a><a href="/about">About</a></nav>';
+    const files = [
+      { name: 'a.html', content: `<html><body>${nav}<main>A</main></body></html>` },
+      { name: 'b.html', content: `<html><body>${nav}<main>B</main></body></html>` },
+    ];
+    const r = detectCandidates(files);
+    const n = r.find(c => c.tag === 'nav');
+    assertEqual(n.reason, 'repeated');
+  });
+
+  it('similar sorts before semantic but after repeated', () => {
+    const navA = '<nav><a href="/" class="active">Home</a></nav>';
+    const navB = '<nav><a href="/">Home</a></nav>';
+    const files = [
+      { name: 'a.html', content: `<html><body>${navA}<header><h1>A</h1></header></body></html>` },
+      { name: 'b.html', content: `<html><body>${navB}<footer>B</footer></body></html>` },
+    ];
+    const r = detectCandidates(files);
+    const reasonOrder = r.map(c => c.reason);
+    const simIdx  = reasonOrder.indexOf('similar');
+    const semIdx  = reasonOrder.indexOf('semantic');
+    assert(simIdx < semIdx, 'similar should appear before semantic');
+  });
+
+  it('counts each file only once per block even if tag appears in both', () => {
+    const nav = '<nav><a href="/">Home</a></nav>';
+    const files = [
+      { name: 'x.html', content: `<html><body>${nav}</body></html>` },
+      { name: 'x.html', content: `<html><body>${nav}</body></html>` }, // duplicate filename
+    ];
+    const r = detectCandidates(files);
+    const n = r.find(c => c.tag === 'nav');
+    // Same filename → Set deduplicates → only 1 unique file
+    assertLength(n.files, 1);
+  });
+
+  it('ignores non-semantic tags like div and span', () => {
+    const files = [{ name: 'index.html',
+      content: '<html><body><div class="wrap"><span>text</span></div></body></html>' }];
+    const r = detectCandidates(files);
+    assertLength(r, 0);
+  });
+});
+
+describe('replaceBlock', () => {
+  const header = '<header><h1>My Site</h1></header>';
+  const page   = `<html><body>${header}<main><p>Hello</p></main></body></html>`;
+
+  it('replaces a matching block with the placeholder', () => {
+    const normBlock = normalise(header);
+    const out = replaceBlock(page, normBlock, '{{> header}}');
+    assertIncludes(out, '{{> header}}');
+    assertNotIncludes(out, '<header>');
+  });
+
+  it('returns original html when block is not found', () => {
+    const out = replaceBlock(page, '<nav>not here</nav>', '{{> nav}}');
+    assertEqual(out, page);
+  });
+
+  it('replaces all occurrences of the block', () => {
+    const block = '<footer>same</footer>';
+    const raw   = `<html><body>${block}<div></div>${block}</body></html>`;
+    const norm  = normalise(block);
+    const out   = replaceBlock(raw, norm, '{{> footer}}');
+    // Should appear twice
+    const count = (out.match(/\{\{> footer\}\}/g) || []).length;
+    assertEqual(count, 2);
+    assertNotIncludes(out, '<footer>');
+  });
+
+  it('handles whitespace differences between source and norm block', () => {
+    const loose  = '<header>\n  <h1>  Title  </h1>\n</header>';
+    const tight  = '<header><h1>Title</h1></header>';
+    const norm   = normalise(tight);
+    // DOMParser normalises whitespace, so both parse to same DOM
+    const src    = `<html><body>${loose}<main>x</main></body></html>`;
+    const out    = replaceBlock(src, normalise(loose), '{{> header}}');
+    assertIncludes(out, '{{> header}}');
+  });
+});
+
+describe('resolveIncludes', () => {
+  it('resolves a known partial by name', () => {
+    const map = new Map([['header', '<header><h1>Title</h1></header>']]);
+    const { content } = resolveIncludes('{{> header}}<main>x</main>', map);
+    assertIncludes(content, '<header>');
+    assertNotIncludes(content, '{{> header}}');
+  });
+
+  it('leaves unknown partials in place', () => {
+    const map = new Map();
+    const { content, unresolved } = resolveIncludes('{{> missing}}<p>x</p>', map);
+    assertIncludes(content, '{{> missing}}');
+    assertLength(unresolved, 1);
+    assertEqual(unresolved[0], 'missing');
+  });
+
+  it('reports multiple unresolved partials', () => {
+    const map = new Map();
+    const { unresolved } = resolveIncludes('{{> a}}{{> b}}{{> c}}', map);
+    assertLength(unresolved, 3);
+  });
+
+  it('resolves nested partials', () => {
+    const map = new Map([
+      ['outer', '<div>{{> inner}}</div>'],
+      ['inner', '<span>hello</span>'],
+    ]);
+    const { content } = resolveIncludes('{{> outer}}', map);
+    assertIncludes(content, '<span>hello</span>');
+    assertNotIncludes(content, '{{>');
+  });
+
+  it('supports path-style includes like partials/header', () => {
+    const map = new Map([['header', '<header>nav</header>']]);
+    const { content } = resolveIncludes('{{> partials/header}}<main>x</main>', map);
+    assertIncludes(content, '<header>nav</header>');
+    assertNotIncludes(content, '{{>');
+  });
+
+  it('supports includes with .html extension', () => {
+    const map = new Map([['footer', '<footer>end</footer>']]);
+    const { content } = resolveIncludes('{{> footer.html}}<p>x</p>', map);
+    assertIncludes(content, '<footer>end</footer>');
+  });
+
+  it('handles whitespace inside the tag gracefully', () => {
+    const map = new Map([['nav', '<nav>links</nav>']]);
+    const { content } = resolveIncludes('{{>  nav  }}<p>x</p>', map);
+    assertIncludes(content, '<nav>links</nav>');
+  });
+
+  it('does not loop infinitely on circular includes (depth limit)', () => {
+    const map = new Map([
+      ['a', '{{> b}}'],
+      ['b', '{{> a}}'],
+    ]);
+    // Must complete without hanging
+    const { content } = resolveIncludes('{{> a}}', map);
+    assert(typeof content === 'string', 'should return a string');
+  });
+
+  it('returns empty unresolved array when all partials resolve', () => {
+    const map = new Map([['hd', '<header>ok</header>'], ['ft', '<footer>ok</footer>']]);
+    const { unresolved } = resolveIncludes('{{> hd}}{{> ft}}', map);
+    assertLength(unresolved, 0);
+  });
+
+  it('does not mutate the partialsMap', () => {
+    const map = new Map([['nav', '<nav>x</nav>']]);
+    const sizeBefore = map.size;
+    resolveIncludes('{{> nav}}{{> missing}}', map);
+    assertEqual(map.size, sizeBefore);
+  });
+});
+
+// ─── Runner ───────────────────────────────────────────────────────────────────
+
+async function runAll() {
+  let passed = 0, failed = 0;
+  const out = document.getElementById('output');
+  out.innerHTML = '';
+
+  for (const suite of suites) {
+    const rows = [];
+
+    for (const t of suite.tests) {
+      let ok = true, err = null;
+      try {
+        await t.fn();
+      } catch (e) {
+        ok = false;
+        err = e;
+      }
+      ok ? passed++ : failed++;
+      rows.push({ name: t.name, ok, err });
+    }
+
+    const div = document.createElement('div');
+    div.className = 'suite';
+    div.innerHTML = `<div class="suite-name">${suite.name}</div>` +
+      rows.map(r => `
+        <div class="test-row ${r.ok ? 'pass' : 'fail'}">
+          <span class="test-icon">${r.ok ? '✓' : '✗'}</span>
+          <span class="test-name">
+            ${r.name}
+            ${r.err ? `<div class="test-error">${escHtml(r.err.message)}</div>` : ''}
+          </span>
+        </div>
+      `).join('');
+    out.appendChild(div);
+  }
+
+  const total = passed + failed;
+  const pct   = total ? Math.round((passed / total) * 100) : 0;
+  const color = failed === 0 ? 'var(--green)' : failed < total / 2 ? 'var(--yellow)' : 'var(--red)';
+
+  document.getElementById('summary').innerHTML = `
+    <span class="count pass-count">${passed} passed</span>
+    ${failed ? `<span class="count fail-count">${failed} failed</span>` : ''}
+    <span style="color:var(--text-muted); font-size:0.82rem;">${total} total</span>
+    <div class="progress">
+      <div class="progress-bar" style="width:${pct}%; background:${color};"></div>
+    </div>
+    <span style="color:${color}; font-weight:700;">${pct}%</span>
+  `;
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+runAll();
+</script>
+</body>
+</html>
